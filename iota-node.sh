@@ -194,7 +194,6 @@ IXI_DIR = ixi
 HEADLESS = true
 DEBUG = true
 DB_PATH = mainnetdb
-API_HOST = $(get_ip_address)
 EOL
 }
 

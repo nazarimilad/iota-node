@@ -5,8 +5,9 @@ A CLI to manage a full IOTA node
 
 There are a lot of tutorials like [this one](https://www.simform.com/iota-iiot-tutorial-part-2/) or [this one](https://forum.helloiota.com/2424/Setting-up-a-VPS-IOTA-Full-Node-from-scratch). The problem with this tutorials is that they take quite some time and they aren't easy to follow for people who are new to a Linux environement.
 
-The purpose of this script is to automate the installation of an IOTA full node. It compiles the IRI, it generates an ini configuration file, it sets up a daemon, 
-it can be used to add new neighbor nodes, etc.
+The purpose of this script is to automate the installation of an IOTA full node. It compiles the IRI, it generates an ini configuration file, it sets up a daemon etc. 
+
+It can also be used to adjust settings while it's running. You can add new neighbors for example, remove them, get your TCP address, get information about your own node, and more.
 
 ## Prerequisites
 

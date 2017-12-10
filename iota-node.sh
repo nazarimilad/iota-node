@@ -48,16 +48,19 @@ get_ip_address() {
 }    
 
 get_neighbors() {
-    printf "$(curl -s http://$(get_ip_address):$PORT -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{\"command\": \"getNeighbors\"}')\n"
+    printf "\nInformation about your neighbors:\n\n"
+    printf "$(curl -s http://localhost:14265 -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{"command": "getNeighbors"}' | python -m json.tool)\n\n"
 }
 
 get_node_info() {
-    printf "$(curl -s http://$(get_ip_address):$PORT -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{\"command\": \"getNodeInfo\"}')\n"
+    printf "\nInformation about your node:\n\n"
+    printf "$(curl -s http://localhost:14265 -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{"command": "getNodeInfo"}' | python -m json.tool)\n\n"
 }
 
 # get daemon status
 get_status() {
-    printf "$(systemctl status iota-node)\n"
+    printf "\nInformation about the iota-node daemon:\n\n"
+    printf "$(systemctl status iota-node)\n\n"
 }
 
 get_tcp_address() {
@@ -194,7 +197,7 @@ Description=IOTA Peer Manager
 After=network.target 
 
 [Service] 
-ExecStart=/usr/local/bin/iota-pm -i http://127.0.0.1:$PORT -p 127.0.0.1:$IPM_RECEIVER_PORT
+ExecStart=/usr/local/bin/iota-pm -i http://127.0.0.1:$PORT -p 0.0.0.0:$IPM_RECEIVER_PORT
 Restart=on-failure
 RestartSec=5s
 

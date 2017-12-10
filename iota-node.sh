@@ -7,6 +7,7 @@ set -o nounset
 declare -i PORT=14265
 declare -i UDP_RECEIVER_PORT=14600
 declare -i TCP_RECEIVER_PORT=15600
+declare -i IPM_RECEIVER_PORT=8888
 declare -r CONFIG_FILE_NAME="$HOME/.iota-node/iri.ini"
 declare -r ADRES_REGEX="TODO"
 
@@ -15,6 +16,12 @@ declare -r ADRES_REGEX="TODO"
 # update the daemon
 update() {
     systemctl daemon-reload && systemctl restart iota-node
+    
+    # check if IOTA-PM is installed
+    if [ -s /etc/systemd/system/iota-pm.service ]
+    then
+        systemctl restart iota-pm
+    fi
 }
 
 add_neighbor() {
@@ -61,6 +68,13 @@ get_udp_address() {
     echo "udp://$(get_ip_address):$UDP_RECEIVER_PORT"
 }
 
+install_ipm() {
+    npm i -g iota-pm
+    read_input "IOTA Peer Manager" "IPM_RECEIVER_PORT"
+    setup_ipm_daemon
+}
+    
+
 install_node() {    
     compile_iri
 
@@ -71,11 +85,7 @@ install_node() {
     read_input "API command" "PORT"
     read_input "UDP" "UDP_RECEIVER_PORT"
     read_input "TCP" "TCP_RECEIVER_PORT"
-
-    echo "PORT = ${PORT}"
-    echo "UDP_RECEIVER_PORT = ${UDP_RECEIVER_PORT}"
-    echo "TCP_RECEIVER_PORT = ${TCP_RECEIVER_PORT}"
-
+    
     write_config_file
     
     # copy the freshly compiled iri.jar to the .iota-node folder
@@ -83,7 +93,7 @@ install_node() {
     cp -R iri/target/$IRI_FILE_NAME $HOME/.iota-node/
     mv $HOME/.iota-node/$IRI_FILE_NAME $HOME/.iota-node/iri.jar
   
-    setup_service
+    setup_node_daemon
     
     # copy this script to the .iota-node folder
     cp iota-node.sh $HOME/.iota-node/
@@ -92,11 +102,23 @@ install_node() {
     # create an alias
     echo "alias sudo='sudo '" >> $HOME/.bashrc
     echo "alias iota-node='bash $HOME/.iota-node/iota-node.sh'" >> $HOME/.bashrc
+    source $HOME/.bashrc
     
     # delete unnecessary files
     rm -rf iri/
+    
+    printf "\nWould you like to install IOTA-PM? This is a program for monitoring and managing IOTA peers connected with your node.\n"
+    printf "[y/n]: "
+    read IPM_INSTALLATION_ANSWER
+    if [ $IPM_INSTALLATION_ANSWER == "y" ];
+    then
+        printf "\n"
+        install_ipm
+    fi
 
-    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) and your UDP address is $(get_udp_address) .\nAdd a neighbor to start the node.\n\n"
+    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) .\nYour UDP address to share with others is $(get_udp_address) .\n\nAdd a neighbor to start the node by running the following command:\niota-node --add-neighbor addressOfYourNeighbor\n\n"
+
+    printf "If you previously chose to install IOTA-PM too, AFTER adding a neighbor you can access your dashboard here:\nhttp://$(get_ip_address):$IPM_RECEIVER_PORT\n\n"
 }
 
 parse_arguments() {
@@ -135,7 +157,7 @@ parse_arguments() {
     done
 }
 
-read_input() {
+read_input() { 
     local PORT_LOCAL="$2"
     printf "Which port should be used to receive $1 data?\n"
     printf "The default port ${!2} will be used if no input is given.\n\n"
@@ -165,7 +187,24 @@ remove_neighbors() {
     fi
 }
 
-setup_service() {
+setup_ipm_daemon() {
+cat > /etc/systemd/system/iota-pm.service << EOL
+[Unit] 
+Description=IOTA Peer Manager
+After=network.target 
+
+[Service] 
+ExecStart=/usr/local/bin/iota-pm -i http://127.0.0.1:$PORT -p 127.0.0.1:$IPM_RECEIVER_PORT
+Restart=on-failure
+RestartSec=5s
+
+[Install] 
+WantedBy=multi-user.target 
+EOL
+}
+
+
+setup_node_daemon() {
 cat > /etc/systemd/system/iota-node.service << EOL
 [Unit] 
 Description=IOTA-node 
@@ -212,7 +251,7 @@ else
     then 
         parse_arguments "$@"
     else
-        # control if the configuration file doesn't exist or is empty
+        # control if the configuration file exists and isn't empty
         if [ -s $CONFIG_FILE_NAME ]
         then
             printf "To run this program, you need to specify at least one argument.\n\n"

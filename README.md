@@ -45,7 +45,7 @@ The script currently supports the following options:
 * `-x` : start the iota-node daemon
 * `-X` : stop the iota-node daemon
 
-## full word options:
+## Full word options:
 
 * `--add-neighbor address` : add a neighbor specified by its address 
 * `--get-neighbors` : get information about your neighbors

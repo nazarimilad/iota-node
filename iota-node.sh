@@ -208,10 +208,12 @@ then
     exit
 else
     # if that's the case then: 
+    # control if arguments are given in
     if [ "$#" -gt 0 ]
     then 
         parse_arguments "$@"
     else
+        # control if the configuration file doesn't exist or is empty
         if [ -s $CONFIG_FILE_NAME ]
         then
             printf "To run this program, you need to specify at least one argument.\n\n"

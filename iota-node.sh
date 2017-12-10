@@ -108,7 +108,7 @@ parse_arguments() {
         --start) systemctl start iota; shift 1;;
         --stop) systemctl stop iota; shift 1;;
         --update) update; shift 1;;
-        --add-neighbord) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
+        --add-neighbor) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
 
         -*) printf "Unknown option: $1.\n\n" >&2; exit 1;;
         *) printf "Commando not recongnized\n"; shift 1;;
@@ -149,23 +149,16 @@ remove_neighbors() {
 setup_service() {
 cat > /etc/systemd/system/iota-node.service << EOL
 [Unit] 
-
 Description=IOTA-node 
-
 After=network.target 
 
 [Service] 
-
 WorkingDirectory=$HOME/.iota-node
-
 ExecStart=/usr/bin/java -jar $HOME/.iota-node/iri.jar -c $CONFIG_FILE_NAME
-
 ExecReload=/bin/kill -HUP \$MAINPID KillMode=process Restart=on-failure 
 
 [Install] 
-
 WantedBy=multi-user.target 
-
 Alias=iota-node.service
 EOL
 

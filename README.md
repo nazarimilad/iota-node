@@ -68,6 +68,12 @@ The second sections consists of the procedures and methodes.
 
 And finally the third block contains the "main method".
 
+## TODO
+
+* Add an option to install [iota-pm](https://github.com/akashgoswami/ipm) during the installation of the node and integrate it in the iota-node daemon
+* Add input safety checks (for the ports mainly)
+* Make an equivalent powershell script
+
 ---
 
 Any issue or pull request is welcome.

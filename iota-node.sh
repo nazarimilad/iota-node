@@ -26,7 +26,7 @@ add_neighbor() {
         update
         printf "Address $1 had been added to your list of neighbors.\n\n"
     else 
-        printf "You either don't have an ini configuration file or it's empty.\nYou can create one by running iota-node without any argument.\n"
+        printf "You either don't have an ini configuration file or it's empty.\nYou can create one by running iota-node without any argument.\n\n"
     fi
 }
 
@@ -67,6 +67,7 @@ install_node() {
     clear 
     printf "Welcome to the IOTA node installation!\n\n"
     
+    # Generate the configuration file
     read_input "API command" "PORT"
     read_input "UDP" "UDP_RECEIVER_PORT"
     read_input "TCP" "TCP_RECEIVER_PORT"
@@ -95,7 +96,7 @@ install_node() {
     # delete unnecessary files
     rm -rf iri/
 
-    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) and your UDP address is $(get_udp_address) .\n\n"
+    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) and your UDP address is $(get_udp_address) .\nAdd a neighbor to start the node.\n\n"
 }
 
 parse_arguments() {
@@ -103,19 +104,28 @@ parse_arguments() {
       case "$1" in
         -a) add_neighbor "$2"; shift 2;;
         -i) install_node; shift 1;;
+        -I) get_ip_address; shift 1;;
+        -n) get_node_info; shift 1;;
+        -N) get_neighbors; shift 1;;
         -r) remove_neighbors; shift 1;;
+        -s) get_status; shift 1;;
+        -t) get_tcp_address; shift 1;;
+        -u) update; shift 1;;
+        -U) get_udp_address; shift 1;;
+        -x) systemctl start iota-node; shift 1;;
+        -X) systemctl stop iota-node; shift 1;;
 
+        --get-ip-address) get_ip_address; shift 1;;
         --add-neighbor=*) add_neighbor "${1#*=}"; shift 1;;
         --get-neighbors) get_neighbors; shift 1;;
         --get-node-info) get_node_info; shift 1;;
-        --get-ip-address) get_ip_address; shift 1;;
         --get-status) get_status; shift 1;;
         --get-tcp-address) get_tcp_address; shift 1;;
         --get-udp-address) get_udp_address; shift 1;;
         --install-node) install_node; shift 1;;
         --remove-neighbors) remove_neighbors; shift 1;;
-        --start) systemctl start iota; shift 1;;
-        --stop) systemctl stop iota; shift 1;;
+        --start) systemctl start iota-node; shift 1;;
+        --stop) systemctl stop iota-node; shift 1;;
         --update) update; shift 1;;
         --add-neighbor) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
 
@@ -170,8 +180,6 @@ ExecReload=/bin/kill -HUP \$MAINPID KillMode=process Restart=on-failure
 WantedBy=multi-user.target 
 Alias=iota-node.service
 EOL
-
-update
 }
 
 write_config_file() {

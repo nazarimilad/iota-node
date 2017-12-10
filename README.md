@@ -36,7 +36,7 @@ The script currently supports the following options:
 * `-I` : get your public IP address
 * `-n` : get information about your own node
 * `-N` : get information about your neighbors
-* `-r` : reomve all of your neighbors
+* `-r` : remove all of your neighbors
 * `-s` : get the status of the IRI daemon
 * `-t` : get the TCP address of your node
 * `-u` : restart the node daemon

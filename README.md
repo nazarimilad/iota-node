@@ -1,5 +1,5 @@
 # iota-node
-CLI to manage a full IOTA node
+A CLI to manage a full IOTA node
 
 ## Description
 
@@ -29,17 +29,50 @@ After restarting your terminal, you can run iota-node from everywhere: `sudo iot
 ## Options
 The script currently supports the following options:
 
-* --add-neighbor <address> : add a neighbor specified by its address 
-* --get-neighbors : get information about your neighbors
-* --get-node-info : get information about your own node
-* --get-ip-address : get your public IP address
-* --get-status : get the status of the IRI daemon
-* --get-tcp-address : get the TCP address of your node
-* --get-udp-address : get the UDP address of your node
-* --install-node : reinstall the node
-* --remove-neighbors : remove all of your neighbors
-* --start : start the node daemon
-* --stop : stop the node daemon
-* --update : restart the node daemon
+### One-letter options:
+
+* ´-a address´ : add a neighbor specified by its address
+* ´-i´ : reinstall the node
+* ´-I´ : get your public IP address
+* ´-n´ : get information about your own node
+* ´-N´ : get information about your neighbors
+* ´-r´ : reomve all of your neighbors
+* ´-s´ : get the status of the IRI daemon
+* ´-t´ : get the TCP address of your node
+* ´-u´ : restart the node daemon
+* ´-U´ : get the UDP address of your node
+* ´-x´ : start the iota-node daemon
+* ´-X´ : stop the iota-node daemon
+
+## full word options:
+
+* ´--add-neighbor address´ : add a neighbor specified by its address 
+* ´--get-neighbors´ : get information about your neighbors
+* ´--get-node-info´ : get information about your own node
+* ´--get-ip-address´ : get your public IP address
+* ´--get-status´ : get the status of the IRI daemon
+* ´--get-tcp-address´ : get the TCP address of your node
+* ´--get-udp-address´ : get the UDP address of your node
+* ´--install-node´ : reinstall the node
+* ´--remove-neighbors´ : remove all of your neighbors
+* ´--start´ : start the node daemon
+* ´--stop´ : stop the node daemon
+* ´--update´ : restart the node daemon
+
+## Code structure 
+
+The first section contains the global variables and script settings.
+
+The second sections consists of the procedures and methodes.
+
+And finally the third block contains the "main method".
+
+---
 
 Any issue or pull request is welcome.
+
+Donations: 
+
+* IOTA-address: ´MCVMFBGRJRHMOMFKMTJCIKWSLVQOUASOIHLVHXMVFDPTJYDPUTWITJASHWBDFNRQTYVZIEVYIRYMRSFM9CVDPLSYY9´
+
+* Monero-address: ´49y3pVR9mgDhTXgtMnZ4JLCcdKRKTEQTFcVvYaBPGJTfX3sEX2Y9CtBHrLrUBTzSNa2yRSWz69SjJR6uNmszgvfURt2KMR2´

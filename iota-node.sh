@@ -12,6 +12,7 @@ declare -r ADRES_REGEX="TODO"
 
 #############################################################################################################"
 
+# update the daemon
 update() {
     systemctl daemon-reload && systemctl restart iota-node
 }
@@ -19,6 +20,7 @@ update() {
 add_neighbor() {
     if [ -s $CONFIG_FILE_NAME ]
     then 
+        # delete example addresses first
         sed -i -E "s# udp://neighbor-1:14600 udp://neighbor-2:14600##g" $CONFIG_FILE_NAME
         sed -i -E "s#(NEIGHBORS.*)#\1 $1#g" $CONFIG_FILE_NAME
         update
@@ -46,6 +48,7 @@ get_node_info() {
     printf "$(curl -s http://$(get_ip_address):$PORT -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{\"command\": \"getNodeInfo\"}')\n"
 }
 
+# get daemon status
 get_status() {
     printf "$(systemctl status iota-node)\n"
 }
@@ -63,7 +66,7 @@ install_node() {
 
     clear 
     printf "Welcome to the IOTA node installation!\n\n"
-
+    
     read_input "API command" "PORT"
     read_input "UDP" "UDP_RECEIVER_PORT"
     read_input "TCP" "TCP_RECEIVER_PORT"
@@ -73,17 +76,23 @@ install_node() {
     echo "TCP_RECEIVER_PORT = ${TCP_RECEIVER_PORT}"
 
     write_config_file
+    
+    # copy the freshly compiled iri.jar to the .iota-node folder
     IRI_FILE_NAME=$(ls iri/target/| grep -P -w "^iri.*\.jar$")
     cp -R iri/target/$IRI_FILE_NAME $HOME/.iota-node/
     mv $HOME/.iota-node/$IRI_FILE_NAME $HOME/.iota-node/iri.jar
   
     setup_service
     
+    # copy this script to the .iota-node folder
     cp iota-node.sh $HOME/.iota-node/
     chmod +x $HOME/.iota-node/iota-node.sh
+    
+    # create an alias
     echo "alias sudo='sudo '" >> $HOME/.bashrc
     echo "alias iota-node='bash $HOME/.iota-node/iota-node.sh'" >> $HOME/.bashrc
     
+    # delete unnecessary files
     rm -rf iri/
 
     printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) and your UDP address is $(get_udp_address) .\n\n"
@@ -183,12 +192,14 @@ EOL
 
 
 ################################################################################################################
+
+# control if script is being run as root
 if [ "$EUID" -ne 0 ]
 then
     printf "Please run as root\n\n"
     exit
 else
-    
+    # if that's the case then: 
     if [ "$#" -gt 0 ]
     then 
         parse_arguments "$@"

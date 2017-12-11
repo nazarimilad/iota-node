@@ -123,42 +123,6 @@ install_node() {
     printf "If you previously chose to install IOTA-PM too, AFTER adding a neighbor you can access your dashboard here:\nhttp://$(get_ip_address):$IPM_RECEIVER_PORT\n\n"
 }
 
-parse_arguments() {
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        -a) add_neighbor "$2"; shift 2;;
-        -i) install_node; shift 1;;
-        -I) get_ip_address; shift 1;;
-        -n) get_node_info; shift 1;;
-        -N) get_neighbors; shift 1;;
-        -r) remove_neighbors; shift 1;;
-        -s) get_status; shift 1;;
-        -t) get_tcp_address; shift 1;;
-        -u) update; shift 1;;
-        -U) get_udp_address; shift 1;;
-        -x) systemctl start iota-node; shift 1;;
-        -X) systemctl stop iota-node; shift 1;;
-
-        --get-ip-address) get_ip_address; shift 1;;
-        --add-neighbor=*) add_neighbor "${1#*=}"; shift 1;;
-        --get-neighbors) get_neighbors; shift 1;;
-        --get-node-info) get_node_info; shift 1;;
-        --get-status) get_status; shift 1;;
-        --get-tcp-address) get_tcp_address; shift 1;;
-        --get-udp-address) get_udp_address; shift 1;;
-        --install-node) install_node; shift 1;;
-        --remove-neighbors) remove_neighbors; shift 1;;
-        --start) systemctl start iota-node; shift 1;;
-        --stop) systemctl stop iota-node; shift 1;;
-        --update) update; shift 1;;
-        --add-neighbor) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
-
-        -*) printf "Unknown option: $1.\n\n" >&2; exit 1;;
-        *) printf "Commando not recongnized\n"; shift 1;;
-      esac
-    done
-}
-
 read_input() { 
     local PORT_LOCAL="$2"
     printf "Which port should be used to receive $1 data?\n"
@@ -223,6 +187,25 @@ Alias=iota-node.service
 EOL
 }
 
+start_daemon() {
+    systemctl start iota-node
+    
+    if [ -s /etc/systemd/system/iota-pm.service ]
+    then
+        systemctl start iota-pm
+    fi
+}
+
+
+stop_daemon() {
+    systemctl stop iota-node
+    
+    if [ -s /etc/systemd/system/iota-pm.service ]
+    then
+        systemctl stop iota-pm
+    fi
+}
+
 write_config_file() {
 mkdir -p $HOME/.iota-node/
 cat > $CONFIG_FILE_NAME << EOL
@@ -237,6 +220,43 @@ DEBUG = true
 DB_PATH = mainnetdb
 EOL
 }
+
+parse_arguments() {
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -a) add_neighbor "$2"; shift 2;;
+        -i) install_node; shift 1;;
+        -I) get_ip_address; shift 1;;
+        -n) get_node_info; shift 1;;
+        -N) get_neighbors; shift 1;;
+        -r) remove_neighbors; shift 1;;
+        -s) get_status; shift 1;;
+        -t) get_tcp_address; shift 1;;
+        -u) update; shift 1;;
+        -U) get_udp_address; shift 1;;
+        -x) start_daemon; shift 1;;
+        -X) stop_daemon; shift 1;;
+
+        --get-ip-address) get_ip_address; shift 1;;
+        --add-neighbor=*) add_neighbor "${1#*=}"; shift 1;;
+        --get-neighbors) get_neighbors; shift 1;;
+        --get-node-info) get_node_info; shift 1;;
+        --get-status) get_status; shift 1;;
+        --get-tcp-address) get_tcp_address; shift 1;;
+        --get-udp-address) get_udp_address; shift 1;;
+        --install-node) install_node; shift 1;;
+        --remove-neighbors) remove_neighbors; shift 1;;
+        --start) start_daemon; shift 1;;
+        --stop) stop_daemon; shift 1;;
+        --update) update; shift 1;;
+        --add-neighbor) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
+
+        -*) printf "Unknown option: $1.\n\n" >&2; exit 1;;
+        *) printf "Commando not recongnized\n"; shift 1;;
+      esac
+    done
+}
+
 
 
 ################################################################################################################

@@ -29,7 +29,7 @@ Make the script executable   : `chmod +x iota-node.sh`
 
 Run the script               : `sudo ./iota-node.sh`
 
-After restarting your terminal, you can run iota-node from everywhere: `sudo iota-node <option>`
+**After** restarting your terminal, you can run iota-node from everywhere: `sudo iota-node <option>`
 
 ## Options
 The script currently supports the following options:

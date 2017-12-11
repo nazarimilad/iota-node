@@ -105,7 +105,6 @@ install_node() {
     # create an alias
     echo "alias sudo='sudo '" >> $HOME/.bashrc
     echo "alias iota-node='bash $HOME/.iota-node/iota-node.sh'" >> $HOME/.bashrc
-    source $HOME/.bashrc
     
     # delete unnecessary files
     rm -rf iri/

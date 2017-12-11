@@ -118,7 +118,7 @@ install_node() {
         install_ipm
     fi
 
-    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) .\nYour UDP address to share with others is $(get_udp_address) .\n\nAdd a neighbor to start the node by running the following command:\niota-node --add-neighbor addressOfYourNeighbor\n\n"
+    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) .\nYour UDP address to share with others is $(get_udp_address) .\n\nAdd a neighbor to start the node by running the following command:\nsudo iota-node --add-neighbor addressOfYourNeighbor\n\n"
 
     printf "If you previously chose to install IOTA-PM too, AFTER adding a neighbor you can access your dashboard here:\nhttp://$(get_ip_address):$IPM_RECEIVER_PORT\n\n"
 }
@@ -149,7 +149,7 @@ remove_neighbors() {
         printf "Your neighbor addresses have been deleted. You're alone now.\n\n"
     else 
         printf "You either don't have an ini configuration file or it's empty.\n\
-                You can create one by running iota-node without any argument.\n"
+                You can create one by running sudo iota-node without any argument.\n"
     fi
 }
 

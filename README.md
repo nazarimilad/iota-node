@@ -15,6 +15,9 @@ This script also integrates [IOTA-PM](https://github.com/akashgoswami/ipm)! So n
 
 ## Prerequisites
 
+* curl
+* dig
+* NPM
 * Maven
 * Java 8
 * Git

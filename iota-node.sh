@@ -2,8 +2,6 @@
 set -o errexit
 set -o nounset
 
-# This script manages the IRI
-
 declare -i PORT=14265
 declare -i UDP_RECEIVER_PORT=14600
 declare -i TCP_RECEIVER_PORT=15600
@@ -11,7 +9,7 @@ declare -i IPM_RECEIVER_PORT=8888
 declare -r CONFIG_FILE_NAME="$HOME/.iota-node/iri.ini"
 declare -r ADRES_REGEX="TODO"
 
-#############################################################################################################"
+##############################################################################################################
 
 # update the daemon
 update() {

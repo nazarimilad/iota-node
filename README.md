@@ -25,13 +25,7 @@ More screenshots can be found [in this album](https://imgur.com/a/mWuWC).
 
 ## Installation and usage
 
-First download the repository: `git clone https://github.com/nazarimilad/iota-node.git`
-
-Then enter into the directory: `cd iota-node`
-
-Make the script executable   : `chmod +x iota-node.sh`
-
-Run the script               : `sudo ./iota-node.sh`
+Run the following command in your terminal: `curl -L -s $(curl -s https://api.github.com/repos/nazarimilad/iota-node/releases/latest | grep browser_download_url | cut -d '"' -f 4 ) --output iota-node.sh && sudo bash iota-node.sh`
 
 **After** restarting your terminal, you can run iota-node from everywhere: `sudo iota-node <option>`
 

@@ -1,164 +1,332 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# exit if any command fails
 set -o errexit
+# exit if any undeclared variable is used
 set -o nounset
 
-declare -i PORT=14265
-declare -i UDP_RECEIVER_PORT=14600
-declare -i TCP_RECEIVER_PORT=15600
-declare -i IPM_RECEIVER_PORT=8888
-declare -r CONFIG_FILE_NAME="$HOME/.iota-node/iri.ini"
-declare -r ADRES_REGEX="TODO"
+### VARIABLES ###############################################################################################
 
-##############################################################################################################
+declare -r IOTA_NODE_VERSION="2.1.3"
+declare REQUIRED_MINIMUM_AMOUNT_OF_RAM=4
+declare AMOUNT_OF_RAM=$(sudo dmidecode -t 17 | awk '( /Size/ && $2 ~ /^[0-9]+$/ ) { x+=$2 } END{ print ((x/1024))}' | xargs)
 
-# update the daemon
-update() {
-    systemctl daemon-reload && systemctl restart iota-node
+# IRI
+declare IRI_PORT=14265
+declare IRI_UDP_RECEIVER_PORT=14600
+declare IRI_TCP_RECEIVER_PORT=15600
+declare IRI_CONFIG_FILE_NAME="$HOME/.iota-node/iri.ini"
+declare IRI_FILE_NAME="iri.jar"
+
+# NodeJS
+declare NODEJS_VERSION=9.4.0
+
+# IPM
+declare IOTA_PM_PORT=8888
+
+# Nelson
+declare NELSON_PORT=18600
+declare NELSON_TCP_PORT=16600
+declare -r NELSON_CONFIG_FILE_NAME="$HOME/.iota-node/nelson.ini"
+
+# TUI
+declare -i TUI_WIDTH=60
+declare -i TUI_HEIGHT=10
+declare IS_TUI_ON=false
+
+# Regex
+declare URI_REGEX="TODO"
+declare PORT_REGEX="^[1-9][0-9]+$"
+
+### FUNCTIONS #################################################################################################
+
+update_node_daemon() {
+    sudo systemctl daemon-reload && sudo systemctl restart iota-node
     
-    # check if IOTA-PM is installed
-    if [ -s /etc/systemd/system/iota-pm.service ]
-    then
-        systemctl restart iota-pm
+    # check if any extra package is installed too and restart it too
+    if [[ -s /etc/systemd/system/iota-pm.service ]]; then
+        sudo systemctl restart iota-pm
     fi
+    if [[ -s /etc/systemd/system/nelson.service ]]; then
+        sudo systemctl restart nelson
+    fi
+
+    if [[ "$IS_TUI_ON" = true ]]; then
+        whiptail --title "IRI restart" \
+                 --msgbox "The IRI has been restarted." $TUI_HEIGHT $TUI_WIDTH
+    else
+        printf "The IRI has been restarted\n"
+    fi
+}
+
+download_iri() {
+    if [[ "$IS_TUI_ON" = true ]]; then
+        URL=$(curl -s https://api.github.com/repos/iotaledger/iri/releases/latest | \
+              grep browser_download_url | cut -d '"' -f 4 | grep -P \/iri-.*\.jar$ | cat)
+        # download IRI in the background and save download logs in new created file to let the progressbar use  it
+        sudo curl -L $URL --output $HOME/.iota-node/$IRI_FILE_NAME &>> curl_iri_status.log &
+        {
+            PERCENTAGE="0"
+            while (true); do
+                PROC=$(ps aux | grep -v grep | grep -e "curl")
+                if [[ "$PROC" == "" ]]; then
+                    # no curl process active anymore, download ended, end progressbar                
+                    break
+                fi
+                echo $PERCENTAGE
+                PERCENTAGE=$(cat curl_iri_status.log | tr $'\r' $'\n' | tail -1 | awk -F' ' '{print $1}')
+            done
+        } | whiptail --title "IOTA-node" --gauge "\nDownloading iri.jar ..." $TUI_HEIGHT $TUI_WIDTH 0
+        sudo rm curl_iri_status.log
+    else
+        printf "Downloading iri.jar ...\n"
+        sudo curl -L $URL --output $HOME/.iota-node/$IRI_FILE_NAME
+        printf "iri.jar has been downloaded\n"
+    fi
+}
+
+upgrade_node() {
+    download_iri
+    update_node_daemon
+    if [[ "$IS_TUI_ON" = true ]]; then
+        whiptail --title "IRI upgrade" \
+                 --msgbox "The IRI has been upgraded." $TUI_HEIGHT $TUI_WIDTH
+    else
+        printf "The IRI has been upgraded\n"
+    fi
+}
+
+upgrade_node_js() {
+    sudo npm cache clean -f
+    sudo npm install -g n
+    sudo n stable
+    sudo ln -sf /usr/local/n/versions/node/$NODEJS_VERSION/bin/node /usr/bin/nodejs
 }
 
 add_neighbor() {
-    if [ -s $CONFIG_FILE_NAME ]
-    then 
-        # delete example addresses first
-        sed -i -E "s# udp://neighbor-1:14600 udp://neighbor-2:14600##g" $CONFIG_FILE_NAME
-        sed -i -E "s#(NEIGHBORS.*)#\1 $1#g" $CONFIG_FILE_NAME
-        update
-        printf "Address $1 had been added to your list of neighbors.\n\n"
+
+    # check if the ini configuration file exists and is not empty
+    if [[ -s $IRI_CONFIG_FILE_NAME ]]; then
+        if [[ "$IS_TUI_ON" = true ]]; then
+            ADDRESS_NEW_NEIGHBOR=$(whiptail --inputbox "\nWhat's the address of your new neighbor?" $TUI_HEIGHT $TUI_WIDTH \
+                                            --title "New neighbor" 3>&1 1>&2 2>&3)
+            sed -i -E "s#(NEIGHBORS.*)#\1 $ADDRESS_NEW_NEIGHBOR#g" $IRI_CONFIG_FILE_NAME
+            update_node_daemon
+        else
+            sed -i -E "s#(NEIGHBORS.*)#\1 $1#g" $IRI_CONFIG_FILE_NAME
+            update_node_daemon
+        fi
+
+        if [[ "$IS_TUI_ON" = true ]]; then
+            whiptail --title "New neighbor" \
+                     --msgbox "Neighbor $ADDRESS_NEW_NEIGHBOR has been added." $TUI_HEIGHT $TUI_WIDTH
+        else
+            printf "Neighbor $1 has been added.\n\n"            
+        fi
     else 
-        printf "You either don't have an ini configuration file or it's empty.\nYou can create one by running iota-node without any argument.\n\n"
+        if [[ "$IS_TUI_ON" = true ]]; then
+            whiptail --title "Error" \
+                     --msgbox "You either don't have an ini configuration file or it's empty" $TUI_HEIGHT $TUI_WIDTH
+        else
+            printf "You either don't have an ini configuration file or it's empty.\n\n"    
+        fi
     fi
 }
 
-compile_iri() {
-    git clone https://github.com/iotaledger/iri
-    mvn -f iri/pom.xml clean compile
-    mvn -f iri/pom.xml package
-}
-
-get_ip_address() {
-    echo $(dig +short myip.opendns.com @resolver1.opendns.com)
-}    
+get_ip_address() { printf "$(dig +short myip.opendns.com @resolver1.opendns.com)\n"; }    
 
 get_neighbors() {
-    printf "\nInformation about your neighbors:\n\n"
-    printf "$(curl -s http://localhost:14265 -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{"command": "getNeighbors"}' | python -m json.tool)\n\n"
+    JSON_OUTPUT=$(curl -s http://localhost:14265 -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' \
+                       -d '{"command": "getNeighbors"}' | python -m json.tool)
+    printf "Your neighbors:\n$JSON_OUTPUT\n"         
+
 }
 
 get_node_info() {
-    printf "\nInformation about your node:\n\n"
-    printf "$(curl -s http://localhost:14265 -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' -d '{"command": "getNodeInfo"}' | python -m json.tool)\n\n"
+    JSON_OUTPUT=$(curl -s http://localhost:14265 -X POST -H 'Content-Type: application/json' -H 'X-IOTA-API-Version: 1' \
+                   -d '{"command": "getNodeInfo"}' | python -m json.tool)         
+    printf "Information about your node:\n$JSON_OUTPUT\n"
 }
 
-# get daemon status
 get_status() {
     printf "\nInformation about the iota-node daemon:\n\n"
-    printf "$(systemctl status iota-node)\n\n"
+    printf "$(systemctl status iota-node | tr $'\r' $'\n' | tail -n 10 | cut -d' ' -f 13-27 | grep -v "^-")\n\n"
 }
 
-get_tcp_address() {
-    echo "tcp://$(get_ip_address):$TCP_RECEIVER_PORT"
-}
+get_tcp_address() { printf "tcp://$(get_ip_address):$IRI_TCP_RECEIVER_PORT"; }
 
-get_udp_address() {
-    echo "udp://$(get_ip_address):$UDP_RECEIVER_PORT"
-}
+get_udp_address() { printf "udp://$(get_ip_address):$IRI_UDP_RECEIVER_PORT"; }
 
-install_ipm() {
+install_iota_ipm() {
     npm i -g iota-pm
-    read_input "IOTA Peer Manager" "IPM_RECEIVER_PORT"
-    setup_ipm_daemon
+
+    # configure IOTA-PM port if necessary
+    if ( whiptail --title "IOTA-PM Port configuration" --yesno "Default port is: $IOTA_PM_PORT\nDo you want to change this port (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
+        IOTA_PM_PORT=$(whiptail --inputbox "\nWhich port should be used for IOTA-PM?" $TUI_HEIGHT $TUI_WIDTH $IOTA_PM_PORT --title "IOTA-PM port" 3>&1 1>&2 2>&3)
+        while [[ ! $IOTA_PM_PORT =~ $PORT_REGEX ]]; do
+            IOTA_PM_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        whiptail --title "New IOTA-PM Port" --msgbox "IOTA-PM port: $IOTA_PM_PORT." $TUI_HEIGHT $TUI_WIDTH
+    fi
+
+    setup_iota_ipm_daemon
 }
-    
 
-install_node() {    
-    compile_iri
+write_nelson_config_file() {
+cat > $NELSON_CONFIG_FILE_NAME << EOL
+[nelson]
+name = IOTA-node Nelson interface
+cycleInterval = 60
+epochInterval = 300
+apiPort = ${NELSON_PORT}
+apiHostname = 0.0.0.0
+port = ${NELSON_TCP_PORT}
+IRIHostname = localhost
+IRIProtocol = any
+IRIPort = ${IRI_PORT}
+TCPPort = ${IRI_TCP_RECEIVER_PORT}
+UDPPort = ${IRI_UDP_RECEIVER_PORT}
+dataPath = ${HOME}/.iota-node/data/neighbors.db
+; maximal incoming connections. Please do not set below this limit:
+incomingMax = 5
+; maximal outgoing connections. Only set below this limit, if you have trusted, manual neighbors:
+outgoingMax = 4
+isMaster = false
+silent = false
+gui = false
+getNeighbors = https://raw.githubusercontent.com/SemkoDev/nelson.cli/master/ENTRYNODES
+; add as many initial Nelson neighbors, as you like
+neighbors[] = mainnet.deviota.com/16600
+neighbors[] = mainnet2.deviota.com/16600
+neighbors[] = mainnet3.deviota.com/16600
+neighbors[] = iotairi.tt-tec.net/16600
+EOL
+}
 
-    clear 
-    printf "Welcome to the IOTA node installation!\n\n"
+install_nelson() {
+    npm i -g nelson.cli
+
+    # configure nelson port if necessary
+    if ( whiptail --title "Nelson Ports configuration" --yesno "Default API port is: $NELSON_PORT\nDefault TCP port is: $NELSON_TCP_PORT\nDo you want to change this ports (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
+        NELSON_PORT=$(whiptail --inputbox "\nWhich port should be used for the Nelson API?" $TUI_HEIGHT $TUI_WIDTH $NELSON_PORT --title "Nelson API port" 3>&1 1>&2 2>&3)
+        while [[ ! $NELSON_PORT =~ $PORT_REGEX ]]; do
+            NELSON_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        NELSON_TCP_PORT=$(whiptail --inputbox "\nWhich port should be used for TCP packets?" $TUI_HEIGHT $TUI_WIDTH $NELSON_TCP_PORT --title "Nelson TCP port" 3>&1 1>&2 2>&3)
+        while [[ ! $NELSON_TCP_PORT =~ $PORT_REGEX ]]; do
+            NELSON_TCP_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        whiptail --title "New Nelson Ports" --msgbox "Nelson API port: $NELSON_PORT.\nNelson TCP port: $NELSON_TCP_PORT." $TUI_HEIGHT $TUI_WIDTH        
+    fi
     
-    # Generate the configuration file
-    read_input "API command" "PORT"
-    read_input "UDP" "UDP_RECEIVER_PORT"
-    read_input "TCP" "TCP_RECEIVER_PORT"
-    
-    write_config_file
-    
-    # copy the freshly compiled iri.jar to the .iota-node folder
-    IRI_FILE_NAME=$(ls iri/target/| grep -P -w "^iri.*\.jar$")
-    cp -R iri/target/$IRI_FILE_NAME $HOME/.iota-node/
-    mv $HOME/.iota-node/$IRI_FILE_NAME $HOME/.iota-node/iri.jar
-  
-    setup_node_daemon
-    
-    # copy this script to the .iota-node folder
+    write_nelson_config_file
+    setup_nelson_daemon
+}
+
+install_iri_and_script() {
+    # create necessary directories
+    mkdir -p $HOME/.iota-node/data/   
+
+    # download iri.jar if it isn't present
+    if [[ ! -s $HOME/.iota-node/$IRI_FILE_NAME ]]; then
+        download_iri
+    fi
+
+    # copy this bash script to the .iota-node folder
     cp iota-node.sh $HOME/.iota-node/
     chmod +x $HOME/.iota-node/iota-node.sh
     
-    # create an alias
-    echo "alias sudo='sudo '" >> $HOME/.bashrc
-    echo "alias iota-node='bash $HOME/.iota-node/iota-node.sh'" >> $HOME/.bashrc
-    
-    # delete unnecessary files
-    rm -rf iri/
-    
-    printf "\nWould you like to install IOTA-PM? This is a program for monitoring and managing IOTA peers connected with your node.\n"
-    printf "[y/n]: "
-    read IPM_INSTALLATION_ANSWER
-    if [ $IPM_INSTALLATION_ANSWER == "y" ];
-    then
-        printf "\n"
-        install_ipm
+    # create an iota-node alias for the terminal if it isn't already present
+    if ( ! grep -q iota-node $HOME/.bashrc ); then 
+        echo "alias sudo='sudo '" >> $HOME/.bashrc
+        echo "alias iota-node='bash $HOME/.iota-node/iota-node.sh'" >> $HOME/.bashrc
     fi
-
-    printf "\nThe installation has been completed!\nYour TCP address to share with others is $(get_tcp_address) .\nYour UDP address to share with others is $(get_udp_address) .\n\nAdd a neighbor to start the node by running the following command:\nsudo iota-node --add-neighbor addressOfYourNeighbor\n\n"
-
-    printf "If you previously chose to install IOTA-PM too, AFTER adding a neighbor you can access your dashboard here:\nhttp://$(get_ip_address):$IPM_RECEIVER_PORT\n\n"
 }
 
-read_input() { 
-    local PORT_LOCAL="$2"
-    printf "Which port should be used to receive $1 data?\n"
-    printf "The default port ${!2} will be used if no input is given.\n\n"
-    printf "PORT: "
-    read PORT_INPUT
-    if [ -n "${PORT_INPUT}" ]; then
-        until [ $PORT_INPUT -eq $PORT_INPUT 2> /dev/null ]
-        do
-            printf "A port can be identified only by numbers. Try again.\n"
-            printf "PORT: "
-            read PORT_INPUT
+control_minimum_requirements() {
+    if [[ $AMOUNT_OF_RAM -lt $REQUIRED_MINIMUM_AMOUNT_OF_RAM ]]; then 
+        if ( ! whiptail --title "Unsufficient RAM" --yesno "Warning:\n\nRequired minimum amount of RAM: $REQUIRED_MINIMUM_AMOUNT_OF_RAM GB\nAmount of RAM you have:         $AMOUNT_OF_RAM GB\nDo you still want to continue?" $TUI_HEIGHT $TUI_WIDTH ); then
+            exit
+        fi
+    fi
+}
+
+
+install_node() {   
+    # welcome screen
+    if ( ! whiptail --title "IOTA-node" --yesno "Welcome to the installation of IOTA-node.\nThis installation will create a full IOTA node.\n\nDo you want to continue?" $TUI_HEIGHT $TUI_WIDTH ); then
+        exit
+    fi
+
+    control_minimum_requirements
+
+    IS_TUI_ON=true
+    install_iri_and_script
+
+    # configure IOTA-PM port if necessary
+    if ( whiptail --title "IRI Ports configuration" --yesno "Default API port is: $IRI_PORT\nDefault UDP port is: $IRI_UDP_RECEIVER_PORT\nDefault TCP port is: $IRI_TCP_RECEIVER_PORT\nDo you want to change this ports (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
+        IRI_PORT=$(whiptail --inputbox "\nWhich port should be used for the IRI API?" $TUI_HEIGHT $TUI_WIDTH $IRI_PORT --title "IRI API port" 3>&1 1>&2 2>&3)
+        while [[ ! $IRI_PORT =~ $PORT_REGEX ]]; do
+            IRI_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
         done
 
-        eval $PORT_LOCAL=${PORT_INPUT}
+        IRI_UDP_RECEIVER_PORT=$(whiptail --inputbox "\nWhich port should be used for UDP packets?" $TUI_HEIGHT $TUI_WIDTH $IRI_UDP_RECEIVER_PORT --title "UDP port" 3>&1 1>&2 2>&3)
+        while [[ ! $IRI_UDP_RECEIVER_PORT =~ $PORT_REGEX ]]; do
+            IRI_UDP_RECEIVER_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        IRI_TCP_RECEIVER_PORT=$(whiptail --inputbox "\nWhich port should be used for TCP packets?" $TUI_HEIGHT $TUI_WIDTH $IRI_TCP_RECEIVER_PORT --title "TCP port" 3>&1 1>&2 2>&3)
+        while [[ ! $IRI_TCP_RECEIVER_PORT =~ $PORT_REGEX ]]; do
+            IRI_TCP_RECEIVER_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        whiptail --title "New IRI Ports" \
+                 --msgbox "API port: $IRI_PORT.\nUDP port: $IRI_UDP_RECEIVER_PORT.\nTCP port: $IRI_TCP_RECEIVER_PORT." $TUI_HEIGHT $TUI_WIDTH
     fi
-    printf "\n"
+    
+    write_iri_config_file
+    setup_node_daemon
+    start_node_daemon
+
+    PACKAGES=""
+    while [[ -z $PACKAGES ]]; do
+        PACKAGES=$(whiptail --title "Extra packages" --checklist \
+                           "\nWhich of the following extra packages would you like to install?\
+                            Select with Space and confirm your choice with Enter.\
+                            If nothing is needed, cancel with Escape." 15 70 4 \
+                           "IOTA-PM" "IRI and neighbor monitoring " OFF \
+                           "Nelson" "Automatic P2P neighbor management " OFF 3>&1 1>&2 2>&3)
+        exitstatus=$?
+        if [[ ! $exitstatus = 0 ]]; then
+            break
+        fi
+    done
+     
+    if [[ $PACKAGES =~ "IOTA-PM" ]]; then
+        upgrade_node_js     
+        install_iota_ipm
+        update_node_daemon
+    fi
+    if [[ $PACKAGES =~ "Nelson" ]]; then
+        upgrade_node_js
+        install_nelson
+        update_node_daemon
+    fi
+
+    whiptail --title "Installation completed" \
+             --msgbox "The installation has been completed!\nYour addresses to share with others are:\n$(get_tcp_address)\n$(get_udp_address)" $TUI_HEIGHT $TUI_WIDTH
 }
 
-remove_neighbors() {
-    if [ -s $CONFIG_FILE_NAME ]
-    then
-        sed -i -E 's/(NEIGHBORS = ).*/\1/g' $CONFIG_FILE_NAME
-        printf "Your neighbor addresses have been deleted. You're alone now.\n\n"
-    else 
-        printf "You either don't have an ini configuration file or it's empty.\n\
-                You can create one by running sudo iota-node without any argument.\n"
-    fi
-}
-
-setup_ipm_daemon() {
+setup_iota_ipm_daemon() {
 cat > /etc/systemd/system/iota-pm.service << EOL
 [Unit] 
 Description=IOTA Peer Manager
-After=network.target 
+After=network.target
 
 [Service] 
-ExecStart=/usr/local/bin/iota-pm -i http://127.0.0.1:$PORT -p 0.0.0.0:$IPM_RECEIVER_PORT
+ExecStart=/usr/local/bin/iota-pm -i http://127.0.0.1:$IRI_PORT -p 0.0.0.0:$IOTA_PM_PORT
 Restart=on-failure
 RestartSec=5s
 
@@ -167,6 +335,40 @@ WantedBy=multi-user.target
 EOL
 }
 
+write_iri_config_file() {
+cat > $IRI_CONFIG_FILE_NAME << EOL
+[IRI]
+PORT = ${IRI_PORT}
+UDP_RECEIVER_PORT = ${IRI_UDP_RECEIVER_PORT}
+TCP_RECEIVER_PORT = ${IRI_TCP_RECEIVER_PORT}
+NEIGHBORS =
+API_HOST = 0.0.0.0
+IXI_DIR = ixi
+HEADLESS = true
+DEBUG = false
+TESTNET = false
+DB_PATH = mainnetdb
+RESCAN_DB = false
+
+REMOTE_LIMIT_API = "removeNeighbors, addNeighbors, interruptAttachingToTangle, attachToTangle, getNeighbors, setApiRateLimit"
+EOL
+}
+
+setup_nelson_daemon() {
+cat > /etc/systemd/system/nelson.service << EOL    
+[Unit] 
+Description=Nelson Neighbor Manager
+After=network.target 
+
+[Service] 
+ExecStart=/usr/local/bin/nelson --config $NELSON_CONFIG_FILE_NAME
+Restart=on-failure
+RestartSec=5s
+
+[Install] 
+WantedBy=multi-user.target 
+EOL
+}
 
 setup_node_daemon() {
 cat > /etc/systemd/system/iota-node.service << EOL
@@ -176,107 +378,246 @@ After=network.target
 
 [Service] 
 WorkingDirectory=$HOME/.iota-node
-ExecStart=/usr/bin/java -jar $HOME/.iota-node/iri.jar -c $CONFIG_FILE_NAME
-ExecReload=/bin/kill -HUP \$MAINPID KillMode=process Restart=on-failure 
+ExecStart=/usr/bin/java -Djava.net.preferIPv4Stack=true -jar $HOME/.iota-node/iri.jar -c $IRI_CONFIG_FILE_NAME
+ExecReload=/bin/kill -HUP \$MAINPID KillMode=process 
+Restart=on-failure 
 
 [Install] 
-WantedBy=multi-user.target 
-Alias=iota-node.service
+WantedBy=multi-user.target
 EOL
 }
 
-start_daemon() {
-    systemctl start iota-node
-    
-    if [ -s /etc/systemd/system/iota-pm.service ]
-    then
-        systemctl start iota-pm
+load_parameters() {
+    IRI_PORT=$(awk -F "=" '/^PORT/ {print $2}' $IRI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+    IRI_UDP_RECEIVER_PORT=$(awk -F "=" '/UDP_RECEIVER_PORT/ {print $2}' $IRI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+    IRI_TCP_RECEIVER_PORT=$(awk -F "=" '/TCP_RECEIVER_PORT/ {print $2}' $IRI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+
+    if [[ -s /etc/systemd/system/iota-pm.service ]]; then
+        IOTA_PM_PORT=$(cat /etc/systemd/system/iota-pm.service | grep "\-p" | sed 's/.*-p .*:\(.*\)/\1/')
+    fi
+    if [[ -s /etc/systemd/system/nelson.service ]]; then
+        NELSON_PORT=$(awk -F "=" '/apiPort/ {print $2}' $NELSON_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        NELSON_TCP_PORT=$(awk -F "=" '/port/ {print $2}' $NELSON_CONFIG_FILE_NAME | tr -d ' ' | xargs)
     fi
 }
 
-
-stop_daemon() {
-    systemctl stop iota-node
-    
-    if [ -s /etc/systemd/system/iota-pm.service ]
-    then
-        systemctl stop iota-pm
+remove_neighbors() {
+    if [[ -s $IRI_CONFIG_FILE_NAME ]]; then
+        if [[ "$IS_TUI_ON" = true ]]; then
+            if ( whiptail --title "Removing neighbors" --yesno \
+                                  "Are you sure you want to delete all your neighbors?" $TUI_HEIGHT $TUI_WIDTH ); then
+                sed -i -E 's/(NEIGHBORS = ).*/\1/g' $IRI_CONFIG_FILE_NAME
+                update_node_daemon
+                whiptail --title "Removing neighbors" \
+                         --msgbox "All your neighbors have been removed. You're alone now." $TUI_HEIGHT $TUI_WIDTH
+            else
+                exit
+            fi
+        else
+            sed -i -E 's/(NEIGHBORS = ).*/\1/g' $IRI_CONFIG_FILE_NAME
+            update_node_daemon
+            printf "Your neighbor addresses have been removed. You're alone now.\n\n"
+        fi
+    else
+        if [[ "$IS_TUI_ON" = true ]]; then
+            whiptail --title "Error" \
+                     --msgbox "You either don't have an ini configuration file or it's empty" $TUI_HEIGHT $TUI_WIDTH
+        else
+            printf "You either don't have an ini configuration file or it's empty.\n\n"    
+        fi
     fi
 }
 
-write_config_file() {
-mkdir -p $HOME/.iota-node/
-cat > $CONFIG_FILE_NAME << EOL
-[IRI]
-PORT = ${PORT}
-UDP_RECEIVER_PORT = ${UDP_RECEIVER_PORT}
-TCP_RECEIVER_PORT = ${TCP_RECEIVER_PORT}
-NEIGHBORS = udp://neighbor-1:14600 udp://neighbor-2:14600
-IXI_DIR = ixi
-HEADLESS = true
-DEBUG = true
-DB_PATH = mainnetdb
-EOL
+start_node_daemon() {
+    sudo systemctl daemon-reload
+    sudo systemctl start iota-node
+
+    # check if any extra package is installed too and start it too
+    if [[ -s /etc/systemd/system/iota-pm.service ]]; then
+        sudo systemctl start iota-pm
+    fi
+    if [[ -s /etc/systemd/system/nelson.service ]]; then
+        sudo systemctl start nelson
+    fi
+
+    if [[ "$IS_TUI_ON" = true ]]; then   
+        whiptail --title "IOTA-node status" \
+                 --msgbox "IOTA-node has been started." $TUI_HEIGHT $TUI_WIDTH
+    fi
 }
 
 parse_arguments() {
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        -a) add_neighbor "$2"; shift 2;;
-        -i) install_node; shift 1;;
-        -I) get_ip_address; shift 1;;
-        -n) get_node_info; shift 1;;
-        -N) get_neighbors; shift 1;;
-        -r) remove_neighbors; shift 1;;
-        -s) get_status; shift 1;;
-        -t) get_tcp_address; shift 1;;
-        -u) update; shift 1;;
-        -U) get_udp_address; shift 1;;
-        -x) start_daemon; shift 1;;
-        -X) stop_daemon; shift 1;;
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -a) add_neighbor "$2"; shift 2;;
+            -I) get_ip_address; shift 1;;
+            -n) get_node_info; shift 1;;
+            -N) get_neighbors; shift 1;;
+            -r) remove_neighbors; shift 1;;
+            -s) get_status; shift 1;;
+            -t) get_tcp_address; shift 1;;
+            -u) update_node_daemon; shift 1;;
+            -U) get_udp_address; shift 1;;
+            -x) start_node_daemon; shift 1;;
+            -X) stop_node_daemon; shift 1;;
 
-        --get-ip-address) get_ip_address; shift 1;;
-        --add-neighbor=*) add_neighbor "${1#*=}"; shift 1;;
-        --get-neighbors) get_neighbors; shift 1;;
-        --get-node-info) get_node_info; shift 1;;
-        --get-status) get_status; shift 1;;
-        --get-tcp-address) get_tcp_address; shift 1;;
-        --get-udp-address) get_udp_address; shift 1;;
-        --install-node) install_node; shift 1;;
-        --remove-neighbors) remove_neighbors; shift 1;;
-        --start) start_daemon; shift 1;;
-        --stop) stop_daemon; shift 1;;
-        --update) update; shift 1;;
-        --add-neighbor) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
+            --get-ip-address) get_ip_address; shift 1;;
+            --add-neighbor=*) add_neighbor "${1#*=}"; shift 1;;
+            --get-neighbors) get_neighbors; shift 1;;
+            --get-node-info) get_node_info; shift 1;;
+            --get-status) get_status; shift 1;;
+            --get-tcp-address) get_tcp_address; shift 1;;
+            --get-udp-address) get_udp_address; shift 1;;
+            --remove-neighbors) remove_neighbors; shift 1;;
+            --start) start_node_daemon; shift 1;;
+            --stop) stop_node_daemon; shift 1;;
+            --update) update_node_daemon; shift 1;;
+            --upgrade) upgrade_node; shift 1;;            
+            --uninstall) uninstall_node; shift 1;;
+            --add-neighbor) printf "Command $1 requires an argument.\n\n" >&2; exit 1;;
 
-        -*) printf "Unknown option: $1.\n\n" >&2; exit 1;;
-        *) printf "Commando not recongnized\n"; shift 1;;
-      esac
+            -*) printf "Unknown option: $1.\n\n" >&2; exit 1;;
+            *) printf "Commando not recongnized\n"; shift 1;;
+        esac
     done
 }
 
+stop_node_daemon() {
+    sudo systemctl stop iota-node
 
+    # check if any extra package is installed too and stop it too
+    if [[ -s /etc/systemd/system/iota-pm.service ]]; then
+        sudo systemctl stop iota-pm
+    fi
+    if [[ -s /etc/systemd/system/nelson.service ]]; then
+        sudo systemctl stop nelson
+    fi
 
-################################################################################################################
+    if [[ "$IS_TUI_ON" = true ]]; then   
+        whiptail --title "IOTA-node status" \
+                 --msgbox "IOTA-node has been stopped." $TUI_HEIGHT $TUI_WIDTH
+    fi
+}
+
+uninstall_node() {
+    if [[ "$IS_TUI_ON" = true ]]; then   
+        if ( ! whiptail --title "Uninstall" --yesno "Are you sure you want to uninstall your node?" \
+                        $TUI_HEIGHT $TUI_WIDTH ); then
+            exit
+        fi
+    fi
+
+    sed -i '/iota-node/d' $HOME/.bashrc
+    sed -i '/alias sudo/d' $HOME/.bashrc
+    stop_node_daemon
+    sudo rm /etc/systemd/system/iota*
+    
+    if [[ -s /etc/systemd/system/iota-pm.service ]]; then
+        sudo npm -g uninstall iota-pm
+        sudo rm /etc/systemd/system/iota-pm*
+    fi
+    if [[ -s /etc/systemd/system/nelson.service ]]; then
+        sudo npm -g uninstall nelson
+        sudo rm /etc/systemd/system/nelson*
+    fi
+
+    sudo rm -rf $HOME/.iota-node/
+    sudo systemctl daemon-reload
+}
+
+tui_get_addresses() {
+    whiptail --title "Your addresses" \
+             --msgbox "Your addresses to share with others:\n\nUDP address: $(get_udp_address)\nTCP address: $(get_tcp_address)" \
+             $TUI_HEIGHT $TUI_WIDTH
+}
+
+tui_get_node_info() {
+    IRI_VERSION=$(get_node_info | grep appVersion | sed 's/\"appVersion\": \"\(.*\)\",/\1/' | xargs)
+    LATEST_MILESTONE_INDEX=$(get_node_info | grep latestMilestoneIndex | sed 's/\"latestMilestoneIndex\": \(.*\),/\1/' | xargs)
+    LATEST_SOLID_SUBTANGLE_MILESTONE_INDEX=$(get_node_info | grep latestSolidSubtangleMilestoneIndex | sed 's/\"latestSolidSubtangleMilestoneIndex\": \(.*\),/\1/' | xargs)
+    AMOUNT_OF_NEIGHBORS=$(get_node_info | grep neighbors | sed 's/\"neighbors\": \(.*\),/\1/' | xargs)
+    AMOUNT_OF_TIPS=$(get_node_info | grep tips | sed 's/\"tips\": \(.*\),/\1/' | xargs)
+    AMOUNT_OF_TRANSACTIONS_TO_REQUEST=$(get_node_info | grep transactionsToRequest | sed 's/\"transactionsToRequest\": \(.*\)/\1/' | xargs)
+    IS_IRI_SYNCED=""
+    if [[ $LATEST_MILESTONE_INDEX -eq $LATEST_SOLID_SUBTANGLE_MILESTONE_INDEX ]]; then
+        IS_IRI_SYNCED=Yes
+    else
+        IS_IRI_SYNCED=No
+    fi
+
+    whiptail --title "Node info" \
+             --msgbox "IRI version: $IRI_VERSION\nNeighbors:   $AMOUNT_OF_NEIGHBORS\n\nTips:          $AMOUNT_OF_TIPS\nTx to request: $AMOUNT_OF_TRANSACTIONS_TO_REQUEST\n\nLatest Milestone index:           $LATEST_MILESTONE_INDEX\nLatest subtangle Milestone index: $LATEST_SOLID_SUBTANGLE_MILESTONE_INDEX\nIs your node synced:              $IS_IRI_SYNCED" \
+             15 $TUI_WIDTH           
+}
+
+show_menu() {
+    IS_TUI_ON=true
+    CHOICE=$(
+        whiptail --title "IOTA-node" --menu "\nMake your choice:" 20 60 10 \
+            "1)" "Get your address to share with others"  \
+            "2)" "Get information about your neighbors" \
+            "3)" "Add a neighbor"   \
+            "4)" "Remove your neighbors" \
+            "5)" "Get information about your node" \
+            "6)" "Start/stop node" \
+            "7)" "Restart node" \
+            "8)" "Upgrade node" \
+            "9)" "About" \
+            "10)" "Exit"  3>&2 2>&1 1>&3  
+        )
+
+    case $CHOICE in
+        "1)") tui_get_addresses ;;
+
+        "2)") get_neighbors ;;
+
+        "3)") add_neighbor ;;
+
+        "4)") remove_neighbors ;;
+
+        "5)") tui_get_node_info ;;
+
+        "6)")   
+            if [[ $(ps aux | grep -v grep | grep -e "$IRI_FILE_NAME") =~ "$IRI_FILE_NAME" ]]; then             
+                stop_node_daemon
+            else
+                start_node_daemon
+            fi
+        ;;
+
+        "7)") update_node_daemon ;;
+
+        "8)") upgrade_node ;;
+
+        "9)")   
+            whiptail --title "About IOTA-node" \
+                     --msgbox "Version: $IOTA_NODE_VERSION\nSource: https://github.com/nazarimilad/iota-node\nLicense: MIT License\nCreator: Milad Nazari" \
+                     $TUI_HEIGHT $TUI_WIDTH
+        ;;
+        
+        "10)") exit ;;
+    esac
+}
+
+##############################################################################################################
 
 # control if script is being run as root
-if [ "$EUID" -ne 0 ]
-then
-    printf "Please run as root\n\n"
+if [[ "$EUID" -ne 0 ]]; then
+    whiptail --title "Not root" --msgbox "Please run as root." $TUI_HEIGHT $TUI_WIDTH
     exit
 else
-    # if that's the case then: 
-    # control if arguments are given in
-    if [ "$#" -gt 0 ]
-    then 
-        parse_arguments "$@"
-    else
-        # control if the configuration file exists and isn't empty
-        if [ -s $CONFIG_FILE_NAME ]
-        then
-            printf "To run this program, you need to specify at least one argument.\n\n"
+    # control if the configuration file exists and isn't empty
+    if [[ -s $IRI_CONFIG_FILE_NAME ]]; then
+        # if that's the case then: 
+        load_parameters
+        # control if arguments are given in
+        if [[ "$#" -gt 0 ]]; then 
+            parse_arguments "$@"
         else
-            install_node
-        fi
+            
+            show_menu 
+        fi  
+    else
+        install_node
     fi
 fi

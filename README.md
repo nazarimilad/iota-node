@@ -1,4 +1,4 @@
-# iota-node
+# IOTA-node
 A CLI and TUI to install and manage a full IOTA node
 
 ## Description

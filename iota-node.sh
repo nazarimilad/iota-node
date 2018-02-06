@@ -348,7 +348,7 @@ install_node() {
         install_iota_ipm
         update_node_daemon
         whiptail --title "IOTA-PM installed" \
-                 --msgbox "IOTA-PM is installed! You can now access the dashboard on:\n\nhttp://locahost:$IOTA_PM_PORT or\nhttp://your-ip-address:$IOTA_PM_PORT" $TUI_HEIGHT $TUI_WIDTH
+                 --msgbox "IOTA-PM is installed! You can access the dashboard on:\n\nhttp://locahost:$IOTA_PM_PORT or\nhttp://your-ip-address:$IOTA_PM_PORT" $TUI_HEIGHT $TUI_WIDTH
     fi
     if [[ $PACKAGES =~ "Nelson.cli" ]]; then
         upgrade_node_js
@@ -360,7 +360,7 @@ install_node() {
         install_nelson_gui
         update_node_daemon
         whiptail --title "IOTA-PM installed" \
-                 --msgbox "Nelson.gui is installed! You can now access the dashboard on:\n\nhttp://locahost:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD or\nhttp://your-ip-address:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD" $TUI_HEIGHT $TUI_WIDTH
+                 --msgbox "Nelson.gui is installed! You can access the dashboard on:\n\nhttp://locahost:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD or\nhttp://your-ip-address:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD" $TUI_HEIGHT $TUI_WIDTH
     fi
 
     whiptail --title "Installation completed" \

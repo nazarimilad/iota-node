@@ -22,7 +22,7 @@ More screenshots can be found [in this album](https://imgur.com/a/mWuWC).
 * curl 
 * dig
 * NPM (if you want to install extra packages)
-* Yarn (if you want to install the package Nelson.gui)
+* Yarn (if you want to install the package [Nelson.gui](https://github.com/SemkoDev/nelson.gui))
 
 ## Installation and usage
 

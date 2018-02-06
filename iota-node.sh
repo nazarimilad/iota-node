@@ -30,6 +30,9 @@ declare -r NELSON_CLI_CONFIG_FILE_NAME="$HOME/.iota-node/nelson.ini"
 declare NELSON_CLI_USERNAME=""
 declare NELSON_CLI_PASSWORD=""
 
+# Nelson gui
+declare NELSON_GUI_PORT=5000
+
 # TUI
 declare -i TUI_WIDTH=60
 declare -i TUI_HEIGHT=10
@@ -50,6 +53,9 @@ update_node_daemon() {
     fi
     if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
         sudo systemctl restart nelson-cli
+    fi
+    if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
+        sudo systemctl restart nelson-gui
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then
@@ -240,6 +246,22 @@ install_nelson_cli() {
     setup_nelson_cli_daemon
 }
 
+install_nelson_gui() {
+    npm i -g nelson.gui
+
+    # configure nelson cli ports if necessary
+    if ( whiptail --title "Nelson GUI Port configuration" --yesno "Default port is: $NELSON_GUI_PORT\nDo you want to change this port (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
+        NELSON_GUI_PORT=$(whiptail --inputbox "\nWhich port should be used for Nelson GUI?" $TUI_HEIGHT $TUI_WIDTH $NELSON_GUI_PORT --title "Nelson GUI port" 3>&1 1>&2 2>&3)
+        while [[ ! $NELSON_GUI_PORT =~ $PORT_REGEX ]]; do
+            NELSON_GUI_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        whiptail --title "New Nelson GUI Port" --msgbox "Nelson GUI port: $NELSON_CLI_PORT." $TUI_HEIGHT $TUI_WIDTH        
+    fi
+
+    setup_nelson_gui_daemon
+}
+
 install_iri_and_script() {
     # create necessary directories
     mkdir -p $HOME/.iota-node/data/   
@@ -311,8 +333,10 @@ install_node() {
                            "\nWhich of the following extra packages would you like to install?\
                             Select with Space and confirm your choice with Enter.\
                             If nothing is needed, cancel with Escape." 15 70 4 \
-                           "IOTA-PM" "IRI and neighbor monitoring " OFF \
-                           "Nelson.cli" "Automatic P2P neighbor management " OFF 3>&1 1>&2 2>&3)
+                           "IOTA-PM" "IRI and neighbor monitoring" OFF \
+                           "Nelson.cli" "Automatic P2P neighbor management" OFF \
+                           "Nelson.gui" "Monitor Nelson traffic" OFF 3>&1 1>&2 2>&3)
+                           
         exitstatus=$?
         if [[ ! $exitstatus = 0 ]]; then
             break
@@ -323,11 +347,20 @@ install_node() {
         upgrade_node_js     
         install_iota_ipm
         update_node_daemon
+        whiptail --title "IOTA-PM installed" \
+                 --msgbox "IOTA-PM is installed! You can now access the dashboard on:\n\nhttp://locahost:$IOTA_PM_PORT or\nhttp://your-ip-address:$IOTA_PM_PORT" $TUI_HEIGHT $TUI_WIDTH
     fi
     if [[ $PACKAGES =~ "Nelson.cli" ]]; then
         upgrade_node_js
         install_nelson_cli
         update_node_daemon
+    fi
+    if [[ $PACKAGES =~ "Nelson.gui" ]]; then
+        upgrade_node_js
+        install_nelson_gui
+        update_node_daemon
+        whiptail --title "IOTA-PM installed" \
+                 --msgbox "Nelson.gui is installed! You can now access the dashboard on:\n\nhttp://locahost:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD or\nhttp://your-ip-address:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD" $TUI_HEIGHT $TUI_WIDTH
     fi
 
     whiptail --title "Installation completed" \
@@ -385,6 +418,22 @@ WantedBy=multi-user.target
 EOL
 }
 
+setup_nelson_gui_daemon() {
+cat > /etc/systemd/system/nelson-gui.service << EOL    
+[Unit] 
+Description=Nelson GUI
+After=network.target 
+
+[Service] 
+ExecStart=/usr/local/bin/nelson.gui --port ${NELSON_GUI_PORT} --apiPort ${NELSON_CLI_PORT}
+Restart=on-failure
+RestartSec=5s
+
+[Install] 
+WantedBy=multi-user.target 
+EOL
+}
+
 setup_node_daemon() {
 cat > /etc/systemd/system/iota-node.service << EOL
 [Unit] 
@@ -413,6 +462,11 @@ load_parameters() {
     if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
         NELSON_CLI_PORT=$(awk -F "=" '/apiPort/ {print $2}' $NELSON_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
         NELSON_CLI_TCP_PORT=$(awk -F "=" '/port/ {print $2}' $NELSON_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        NELSON_CLI_USERNAME=$(awk -F "=" '/username/ {print $2}' $NELSON_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        NELSON_CLI_PASSWORD=$(awk -F "=" '/password/ {print $2}' $NELSON_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+    fi
+    if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
+        NELSON_GUI_PORT=$(cat /etc/systemd/system/nelson-gui.service | grep "\-\-port") | sed 's/.*--port \(.*\) --api.*/\1/'
     fi
 }
 
@@ -453,6 +507,9 @@ start_node_daemon() {
     fi
     if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
         sudo systemctl start nelson-cli
+    fi
+    if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
+        sudo systemctl start nelson-gui
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then   
@@ -507,6 +564,9 @@ stop_node_daemon() {
     if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
         sudo systemctl stop nelson-cli
     fi
+    if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
+        sudo systemctl stop nelson-gui
+    fi
 
     if [[ "$IS_TUI_ON" = true ]]; then   
         whiptail --title "IOTA-node status" \
@@ -525,7 +585,7 @@ uninstall_node() {
     sed -i '/iota-node/d' $HOME/.bashrc
     sed -i '/alias sudo/d' $HOME/.bashrc
     stop_node_daemon
-    sudo rm /etc/systemd/system/iota*
+    sudo rm /etc/systemd/system/iota-node.service
     
     if [[ -s /etc/systemd/system/iota-pm.service ]]; then
         sudo npm -g uninstall iota-pm
@@ -534,6 +594,10 @@ uninstall_node() {
     if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
         sudo npm -g uninstall nelson-cli
         sudo rm /etc/systemd/system/nelson-cli.service
+    fi
+    if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
+        sudo npm -g uninstall nelson-gui
+        sudo rm /etc/systemd/system/nelson-gui.service
     fi
 
     sudo rm -rf $HOME/.iota-node/

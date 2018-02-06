@@ -9,7 +9,7 @@ The purpose of this script is to automate the installation of an IOTA full node.
 
 ![alt text](https://i.imgur.com/6x2DXxd.png "Welcome screen")
 
-![alt text](https://i.imgur.com/LG8cWSV.png "Installation of extra packages")
+![alt text](https://i.imgur.com/rjsaEiM.png "Installation of extra packages")
 
 ![alt text](https://i.imgur.com/YcNO8n3.png "IOTA-node menu")
 
@@ -18,10 +18,11 @@ More screenshots can be found [in this album](https://imgur.com/a/mWuWC).
 
 ## Prerequisites
 
+* Java 8 or higher
 * curl 
 * dig
-* NPM
-* Java 8
+* NPM (if you want to install extra packages)
+* Yarn (if you want to install the package Nelson.gui)
 
 ## Installation and usage
 

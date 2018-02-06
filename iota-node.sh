@@ -23,10 +23,12 @@ declare NODEJS_VERSION=9.4.0
 # IPM
 declare IOTA_PM_PORT=8888
 
-# Nelson
-declare NELSON_PORT=18600
-declare NELSON_TCP_PORT=16600
-declare -r NELSON_CONFIG_FILE_NAME="$HOME/.iota-node/nelson.ini"
+# Nelson cli
+declare NELSON_CLI_PORT=18600
+declare NELSON_CLI_TCP_PORT=16600
+declare -r NELSON_CLI_CONFIG_FILE_NAME="$HOME/.iota-node/nelson.ini"
+declare NELSON_CLI_USERNAME=""
+declare NELSON_CLI_PASSWORD=""
 
 # TUI
 declare -i TUI_WIDTH=60
@@ -46,8 +48,8 @@ update_node_daemon() {
     if [[ -s /etc/systemd/system/iota-pm.service ]]; then
         sudo systemctl restart iota-pm
     fi
-    if [[ -s /etc/systemd/system/nelson.service ]]; then
-        sudo systemctl restart nelson
+    if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
+        sudo systemctl restart nelson-cli
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then
@@ -172,15 +174,15 @@ install_iota_ipm() {
     setup_iota_ipm_daemon
 }
 
-write_nelson_config_file() {
-cat > $NELSON_CONFIG_FILE_NAME << EOL
+write_nelson_cli_config_file() {
+cat > $NELSON_CLI_CONFIG_FILE_NAME << EOL
 [nelson]
-name = IOTA-node Nelson interface
+name = IOTA-node Nelson-CLI interface
 cycleInterval = 60
 epochInterval = 300
-apiPort = ${NELSON_PORT}
+apiPort = ${NELSON_CLI_PORT}
 apiHostname = 0.0.0.0
-port = ${NELSON_TCP_PORT}
+port = ${NELSON_CLI_TCP_PORT}
 IRIHostname = localhost
 IRIProtocol = any
 IRIPort = ${IRI_PORT}
@@ -200,29 +202,42 @@ neighbors[] = mainnet.deviota.com/16600
 neighbors[] = mainnet2.deviota.com/16600
 neighbors[] = mainnet3.deviota.com/16600
 neighbors[] = iotairi.tt-tec.net/16600
+
+; Protect API with basic auth
+[nelson.apiAuth]
+username=${NELSON_CLI_USERNAME}
+password=${NELSON_CLI_PASSWORD}
 EOL
 }
 
-install_nelson() {
+install_nelson_cli() {
     npm i -g nelson.cli
 
-    # configure nelson port if necessary
-    if ( whiptail --title "Nelson Ports configuration" --yesno "Default API port is: $NELSON_PORT\nDefault TCP port is: $NELSON_TCP_PORT\nDo you want to change this ports (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
-        NELSON_PORT=$(whiptail --inputbox "\nWhich port should be used for the Nelson API?" $TUI_HEIGHT $TUI_WIDTH $NELSON_PORT --title "Nelson API port" 3>&1 1>&2 2>&3)
-        while [[ ! $NELSON_PORT =~ $PORT_REGEX ]]; do
-            NELSON_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+    # configure nelson cli ports if necessary
+    if ( whiptail --title "Nelson CLI Ports configuration" --yesno "Default API port is: $NELSON_CLI_PORT\nDefault TCP port is: $NELSON_CLI_TCP_PORT\nDo you want to change this ports (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
+        NELSON_CLI_PORT=$(whiptail --inputbox "\nWhich port should be used for the Nelson CLI API?" $TUI_HEIGHT $TUI_WIDTH $NELSON_CLI_PORT --title "Nelson CLI API port" 3>&1 1>&2 2>&3)
+        while [[ ! $NELSON_CLI_PORT =~ $PORT_REGEX ]]; do
+            NELSON_CLI_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
         done
 
-        NELSON_TCP_PORT=$(whiptail --inputbox "\nWhich port should be used for TCP packets?" $TUI_HEIGHT $TUI_WIDTH $NELSON_TCP_PORT --title "Nelson TCP port" 3>&1 1>&2 2>&3)
-        while [[ ! $NELSON_TCP_PORT =~ $PORT_REGEX ]]; do
-            NELSON_TCP_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        NELSON_CLI_TCP_PORT=$(whiptail --inputbox "\nWhich port should be used for TCP packets?" $TUI_HEIGHT $TUI_WIDTH $NELSON_CLI_TCP_PORT --title "Nelson CLI TCP port" 3>&1 1>&2 2>&3)
+        while [[ ! $NELSON_CLI_TCP_PORT =~ $PORT_REGEX ]]; do
+            NELSON_CLI_TCP_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
         done
 
-        whiptail --title "New Nelson Ports" --msgbox "Nelson API port: $NELSON_PORT.\nNelson TCP port: $NELSON_TCP_PORT." $TUI_HEIGHT $TUI_WIDTH        
+        whiptail --title "New Nelson CLI Ports" --msgbox "Nelson CLI API port: $NELSON_CLI_PORT.\nNelson CLI TCP port: $NELSON_CLI_TCP_PORT." $TUI_HEIGHT $TUI_WIDTH        
     fi
-    
-    write_nelson_config_file
-    setup_nelson_daemon
+
+    NELSON_CLI_USERNAME=$(whiptail --inputbox "\nPlease choose a username for Nelson authentification:" $TUI_HEIGHT $TUI_WIDTH --title "Nelson authentification" 3>&1 1>&2 2>&3)
+    NELSON_CLI_PASSWORD=$(whiptail --passwordbox "\nPlease choose a password for Nelson authentification:" $TUI_HEIGHT $TUI_WIDTH --title "Nelson authentification" 3>&1 1>&2 2>&3)
+    NELSON_CLI_TEMP_PASSWORD=$(whiptail --passwordbox "\nPlease re-enter your password:" $TUI_HEIGHT $TUI_WIDTH --title "Nelson authentification" 3>&1 1>&2 2>&3)
+    while [[ ! "$NELSON_CLI_PASSWORD" == "$NELSON_CLI_TEMP_PASSWORD" ]]; do
+        NELSON_CLI_PASSWORD=$(whiptail --passwordbox "\nPasswords didn't match. Please choose again:" $TUI_HEIGHT $TUI_WIDTH --title "Nelson authentification" 3>&1 1>&2 2>&3)
+        NELSON_CLI_TEMP_PASSWORD=$(whiptail --passwordbox "\nPlease re-enter your password:" $TUI_HEIGHT $TUI_WIDTH --title "Nelson authentification" 3>&1 1>&2 2>&3)
+    done
+
+    write_nelson_cli_config_file
+    setup_nelson_cli_daemon
 }
 
 install_iri_and_script() {
@@ -247,7 +262,7 @@ install_iri_and_script() {
 
 control_minimum_requirements() {
     if [[ $AMOUNT_OF_RAM -lt $REQUIRED_MINIMUM_AMOUNT_OF_RAM ]]; then 
-        if ( ! whiptail --title "Unsufficient RAM" --yesno "Warning:\n\nRequired minimum amount of RAM: $REQUIRED_MINIMUM_AMOUNT_OF_RAM GB\nAmount of RAM you have:         $AMOUNT_OF_RAM GB\nDo you still want to continue?" $TUI_HEIGHT $TUI_WIDTH ); then
+        if ( ! whiptail --title "Unsufficient RAM" --yesno "\nRequired minimum amount of RAM: $REQUIRED_MINIMUM_AMOUNT_OF_RAM GB\nAmount of RAM you have:         $AMOUNT_OF_RAM GB\nDo you still want to continue?" $TUI_HEIGHT $TUI_WIDTH ); then
             exit
         fi
     fi
@@ -297,7 +312,7 @@ install_node() {
                             Select with Space and confirm your choice with Enter.\
                             If nothing is needed, cancel with Escape." 15 70 4 \
                            "IOTA-PM" "IRI and neighbor monitoring " OFF \
-                           "Nelson" "Automatic P2P neighbor management " OFF 3>&1 1>&2 2>&3)
+                           "Nelson.cli" "Automatic P2P neighbor management " OFF 3>&1 1>&2 2>&3)
         exitstatus=$?
         if [[ ! $exitstatus = 0 ]]; then
             break
@@ -309,9 +324,9 @@ install_node() {
         install_iota_ipm
         update_node_daemon
     fi
-    if [[ $PACKAGES =~ "Nelson" ]]; then
+    if [[ $PACKAGES =~ "Nelson.cli" ]]; then
         upgrade_node_js
-        install_nelson
+        install_nelson_cli
         update_node_daemon
     fi
 
@@ -354,14 +369,14 @@ REMOTE_LIMIT_API = "removeNeighbors, addNeighbors, interruptAttachingToTangle, a
 EOL
 }
 
-setup_nelson_daemon() {
-cat > /etc/systemd/system/nelson.service << EOL    
+setup_nelson_cli_daemon() {
+cat > /etc/systemd/system/nelson-cli.service << EOL    
 [Unit] 
-Description=Nelson Neighbor Manager
+Description=Nelson CLI Neighbor Manager
 After=network.target 
 
 [Service] 
-ExecStart=/usr/local/bin/nelson --config $NELSON_CONFIG_FILE_NAME
+ExecStart=/usr/local/bin/nelson --config $NELSON_CLI_CONFIG_FILE_NAME
 Restart=on-failure
 RestartSec=5s
 
@@ -395,9 +410,9 @@ load_parameters() {
     if [[ -s /etc/systemd/system/iota-pm.service ]]; then
         IOTA_PM_PORT=$(cat /etc/systemd/system/iota-pm.service | grep "\-p" | sed 's/.*-p .*:\(.*\)/\1/')
     fi
-    if [[ -s /etc/systemd/system/nelson.service ]]; then
-        NELSON_PORT=$(awk -F "=" '/apiPort/ {print $2}' $NELSON_CONFIG_FILE_NAME | tr -d ' ' | xargs)
-        NELSON_TCP_PORT=$(awk -F "=" '/port/ {print $2}' $NELSON_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+    if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
+        NELSON_CLI_PORT=$(awk -F "=" '/apiPort/ {print $2}' $NELSON_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        NELSON_CLI_TCP_PORT=$(awk -F "=" '/port/ {print $2}' $NELSON_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
     fi
 }
 
@@ -436,8 +451,8 @@ start_node_daemon() {
     if [[ -s /etc/systemd/system/iota-pm.service ]]; then
         sudo systemctl start iota-pm
     fi
-    if [[ -s /etc/systemd/system/nelson.service ]]; then
-        sudo systemctl start nelson
+    if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
+        sudo systemctl start nelson-cli
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then   
@@ -489,8 +504,8 @@ stop_node_daemon() {
     if [[ -s /etc/systemd/system/iota-pm.service ]]; then
         sudo systemctl stop iota-pm
     fi
-    if [[ -s /etc/systemd/system/nelson.service ]]; then
-        sudo systemctl stop nelson
+    if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
+        sudo systemctl stop nelson-cli
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then   
@@ -514,11 +529,11 @@ uninstall_node() {
     
     if [[ -s /etc/systemd/system/iota-pm.service ]]; then
         sudo npm -g uninstall iota-pm
-        sudo rm /etc/systemd/system/iota-pm*
+        sudo rm /etc/systemd/system/iota-pm.service
     fi
-    if [[ -s /etc/systemd/system/nelson.service ]]; then
-        sudo npm -g uninstall nelson
-        sudo rm /etc/systemd/system/nelson*
+    if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
+        sudo npm -g uninstall nelson-cli
+        sudo rm /etc/systemd/system/nelson-cli.service
     fi
 
     sudo rm -rf $HOME/.iota-node/

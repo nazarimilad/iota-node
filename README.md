@@ -18,11 +18,10 @@ More screenshots can be found [in this album](https://imgur.com/a/mWuWC).
 
 ## Prerequisites
 
-* Java 8 or higher
-* curl 
-* dig
-* NPM (if you want to install extra packages)
-* Yarn (if you want to install the package [Nelson.gui](https://github.com/SemkoDev/nelson.gui))
+* Java 8 or higher (`sudo apt install default-jre`)
+* curl (`sudo apt install curl`)
+* dig (`sudo apt install dnsutils`)
+* NPM (if you want to install extra packages) (`sudo apt install nodejs && sudo apt install npm`)
 
 ## Installation and usage
 

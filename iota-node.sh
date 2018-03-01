@@ -8,7 +8,7 @@ set -o nounset
 
 declare -r IOTA_NODE_VERSION="2.1.3"
 declare REQUIRED_MINIMUM_AMOUNT_OF_RAM=4
-declare AMOUNT_OF_RAM=$(sudo dmidecode -t 17 | awk '( /Size/ && $2 ~ /^[0-9]+$/ ) { x+=$2 } END{ print ((x/1024))}' | xargs)
+declare AMOUNT_OF_RAM=$(($(free -h | awk -F' ' '{print $2}' | head -2 | tail -1 | sed 's/G//' | sed 's/.[0-9]//')+1))
 
 # IRI
 declare IRI_PORT=14265
@@ -33,6 +33,13 @@ declare NELSON_CLI_PASSWORD=""
 # Nelson gui
 declare NELSON_GUI_PORT=5000
 
+# Field cli
+declare FIELD_CLI_ALLOW_POW="false"
+declare FIELD_CLI_IOTA_ADDRESS="SOZAIPJMQUBOFCTDTJJDXCZEKNIYZGIGVDLFMH9FFBAYK9SWGTBCWVUTFHXDOUESZAXRJJCJESJPIEQCCKBUTVQPOW"
+declare FIELD_CLI_PORT=21310
+declare -r FIELD_CLI_CONFIG_FILE_NAME="$HOME/.iota-node/field.ini"
+declare FIELD_DISABLE_IRI="false"
+
 # TUI
 declare -i TUI_WIDTH=60
 declare -i TUI_HEIGHT=10
@@ -56,6 +63,9 @@ update_node_daemon() {
     fi
     if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
         sudo systemctl restart nelson-gui
+    fi
+    if [[ -s /etc/systemd/system/field-cli.service ]]; then
+        sudo systemctl restart field-cli
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then
@@ -165,7 +175,7 @@ get_tcp_address() { printf "tcp://$(get_ip_address):$IRI_TCP_RECEIVER_PORT"; }
 get_udp_address() { printf "udp://$(get_ip_address):$IRI_UDP_RECEIVER_PORT"; }
 
 install_iota_ipm() {
-    npm i -g iota-pm
+    npm install --unsafe-perm -g iota-pm
 
     # configure IOTA-PM port if necessary
     if ( whiptail --title "IOTA-PM Port configuration" --yesno "Default port is: $IOTA_PM_PORT\nDo you want to change this port (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
@@ -217,7 +227,7 @@ EOL
 }
 
 install_nelson_cli() {
-    npm i -g nelson.cli
+    npm install --unsafe-perm -g nelson.cli
 
     # configure nelson cli ports if necessary
     if ( whiptail --title "Nelson CLI Ports configuration" --yesno "Default API port is: $NELSON_CLI_PORT\nDefault TCP port is: $NELSON_CLI_TCP_PORT\nDo you want to change this ports (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
@@ -247,7 +257,7 @@ install_nelson_cli() {
 }
 
 install_nelson_gui() {
-    npm i -g nelson.gui
+    npm install --unsafe-perm -g nelson.gui
 
     # configure nelson cli ports if necessary
     if ( whiptail --title "Nelson GUI Port configuration" --yesno "Default port is: $NELSON_GUI_PORT\nDo you want to change this port (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
@@ -260,6 +270,50 @@ install_nelson_gui() {
     fi
 
     setup_nelson_gui_daemon
+}
+
+write_field_cli_config_file() {
+cat > $FIELD_CLI_CONFIG_FILE_NAME << EOL
+[field]
+name = ${NELSON_CLI_USERNAME}
+IRIPort = ${IRI_PORT}
+IRIHostname = localhost
+address = ${FIELD_CLI_IOTA_ADDRESS}
+port = ${FIELD_CLI_PORT}
+pow = ${FIELD_CLI_ALLOW_POW}
+disableIRI = ${FIELD_DISABLE_IRI}
+customFieldId = true
+EOL
+}
+
+install_field_cli() {
+    npm install --unsafe-perm -g field.cli
+
+    # configure nelson cli ports if necessary
+    if ( whiptail --title "Field CLI Port configuration" --yesno "Default port is: $FIELD_CLI_PORT\nDo you want to change this port (not recommended)?" $TUI_HEIGHT $TUI_WIDTH ); then
+        FIELD_CLI_PORT=$(whiptail --inputbox "\nWhich port should be used for Field CLI?" $TUI_HEIGHT $TUI_WIDTH $FIELD_CLI_PORT --title "Field CLI port" 3>&1 1>&2 2>&3)
+        while [[ ! $FIELD_CLI_PORT =~ $PORT_REGEX ]]; do
+            FIELD_CLI_PORT=$(whiptail --inputbox "\nError: please enter a valid port number" $TUI_HEIGHT $TUI_WIDTH --title "Invalid port" 3>&1 1>&2 2>&3)
+        done
+
+        whiptail --title "New Field CLI Port" --msgbox "Field CLI port: $FIELD_CLI_PORT." $TUI_HEIGHT $TUI_WIDTH        
+    fi
+
+    if ( whiptail --title "Field load balancer" --yesno "Do you want to run jobs from the Field load balancer?" \
+                                      $TUI_HEIGHT $TUI_WIDTH ); then
+        if ( whiptail --title "POW jobs" --yesno "Do you want to allow attachToTangle jobs?" \
+                                      $TUI_HEIGHT $TUI_WIDTH ); then
+            FIELD_CLI_ALLOW_POW="true"
+        fi
+    else
+        FIELD_DISABLE_IRI="true"
+    fi
+
+    FIELD_CLI_IOTA_ADDRESS=$(whiptail --inputbox "\nTo which address should donations go?" $TUI_HEIGHT $TUI_WIDTH \
+                                      --title "Your donation address" 3>&1 1>&2 2>&3)
+
+    write_field_cli_config_file
+    setup_field_cli_daemon
 }
 
 install_iri_and_script() {
@@ -289,7 +343,6 @@ control_minimum_requirements() {
         fi
     fi
 }
-
 
 install_node() {   
     # welcome screen
@@ -330,13 +383,13 @@ install_node() {
     PACKAGES=""
     while [[ -z $PACKAGES ]]; do
         PACKAGES=$(whiptail --title "Extra packages" --checklist \
-                           "\nWhich of the following extra packages would you like to install?\
-                            Select with Space and confirm your choice with Enter.\
-                            If nothing is needed, cancel with Escape." 15 70 4 \
-                           "IOTA-PM" "IRI and neighbor monitoring" OFF \
-                           "Nelson.cli" "Automatic P2P neighbor management" OFF \
-                           "Nelson.gui" "Monitor Nelson traffic" OFF 3>&1 1>&2 2>&3)
-                           
+                    "\nWhich of the following extra packages would you like to install?\
+                    Select with Space and confirm your choice with Enter.\
+                    \nIf nothing is needed, cancel with Escape." 17 78 5 \
+                        "IOTA-PM" "IRI and neighbor monitoring" OFF \
+                        "Nelson.cli" "Automatic P2P neighbor management" OFF \
+                        "Nelson.gui" "Monitor Nelson traffic" OFF \
+                        "Field.cli" "Node intel and incentivisation" OFF 3>&1 1>&2 2>&3)
         exitstatus=$?
         if [[ ! $exitstatus = 0 ]]; then
             break
@@ -359,8 +412,15 @@ install_node() {
         upgrade_node_js
         install_nelson_gui
         update_node_daemon
-        whiptail --title "IOTA-PM installed" \
-                 --msgbox "Nelson.gui is installed! You can access the dashboard on:\n\nhttp://locahost:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD or\nhttp://your-ip-address:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD" $TUI_HEIGHT $TUI_WIDTH
+        whiptail --title "Nelson.gui installed" \
+                 --msgbox "Nelson.gui is installed! You can access the dashboard on:\n\nhttp://locahost:$NELSON_GUI_PORT/#/$NELSON_CLI_USERNAME:$NELSON_CLI_PASSWORD" $TUI_HEIGHT $TUI_WIDTH
+    fi
+    if [[ $PACKAGES =~ "Field.cli" ]]; then
+        upgrade_node_js
+        install_field_cli
+        update_node_daemon
+        whiptail --title "Field.cli installed" \
+                 --msgbox "Field.cli is installed! You can access the dashboard on:\n\nhttp://field.carriota.com/" $TUI_HEIGHT $TUI_WIDTH
     fi
 
     whiptail --title "Installation completed" \
@@ -369,17 +429,17 @@ install_node() {
 
 setup_iota_ipm_daemon() {
 cat > /etc/systemd/system/iota-pm.service << EOL
-[Unit] 
+[Unit]
 Description=IOTA Peer Manager
 After=network.target
 
-[Service] 
+[Service]
 ExecStart=/usr/local/bin/iota-pm -i http://127.0.0.1:$IRI_PORT -p 0.0.0.0:$IOTA_PM_PORT
 Restart=on-failure
 RestartSec=5s
 
-[Install] 
-WantedBy=multi-user.target 
+[Install]
+WantedBy=multi-user.target
 EOL
 }
 
@@ -398,55 +458,71 @@ TESTNET = false
 DB_PATH = mainnetdb
 RESCAN_DB = false
 
-REMOTE_LIMIT_API = "removeNeighbors, addNeighbors, interruptAttachingToTangle, attachToTangle, getNeighbors, setApiRateLimit"
+REMOTE_LIMIT_API = "removeNeighbors, addNeighbors, interruptAttachingToTangle, getNeighbors, setApiRateLimit"
 EOL
 }
 
 setup_nelson_cli_daemon() {
-cat > /etc/systemd/system/nelson-cli.service << EOL    
-[Unit] 
+cat > /etc/systemd/system/nelson-cli.service << EOL  
+[Unit]
 Description=Nelson CLI Neighbor Manager
-After=network.target 
+After=network.target
 
-[Service] 
+[Service]
 ExecStart=/usr/local/bin/nelson --config $NELSON_CLI_CONFIG_FILE_NAME
 Restart=on-failure
 RestartSec=5s
 
-[Install] 
-WantedBy=multi-user.target 
+[Install]
+WantedBy=multi-user.target
 EOL
 }
 
 setup_nelson_gui_daemon() {
-cat > /etc/systemd/system/nelson-gui.service << EOL    
-[Unit] 
+cat > /etc/systemd/system/nelson-gui.service << EOL
+[Unit]
 Description=Nelson GUI
-After=network.target 
+After=network.target
 
-[Service] 
+[Service]
 ExecStart=/usr/local/bin/nelson.gui --port ${NELSON_GUI_PORT} --apiPort ${NELSON_CLI_PORT}
 Restart=on-failure
 RestartSec=5s
 
-[Install] 
-WantedBy=multi-user.target 
+[Install]
+WantedBy=multi-user.target
+EOL
+}
+
+setup_field_cli_daemon() {
+cat > /etc/systemd/system/field-cli.service << EOL
+[Unit]
+Description=Field CLI
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/field --config $FIELD_CLI_CONFIG_FILE_NAME
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
 EOL
 }
 
 setup_node_daemon() {
 cat > /etc/systemd/system/iota-node.service << EOL
-[Unit] 
-Description=IOTA-node 
-After=network.target 
+[Unit]
+Description=IOTA-node
+After=network.target
 
-[Service] 
+[Service]
 WorkingDirectory=$HOME/.iota-node
-ExecStart=/usr/bin/java -Djava.net.preferIPv4Stack=true -jar $HOME/.iota-node/iri.jar -c $IRI_CONFIG_FILE_NAME
-ExecReload=/bin/kill -HUP \$MAINPID KillMode=process 
-Restart=on-failure 
+ExecStart=/usr/bin/java -jar $HOME/.iota-node/iri.jar -c $IRI_CONFIG_FILE_NAME
+ExecReload=/bin/kill -HUP \$MAINPID KillMode=process
+Restart=on-failure
 
-[Install] 
+[Install]
 WantedBy=multi-user.target
 EOL
 }
@@ -467,6 +543,12 @@ load_parameters() {
     fi
     if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
         NELSON_GUI_PORT=$(cat /etc/systemd/system/nelson-gui.service | grep "\-\-port") | sed 's/.*--port \(.*\) --api.*/\1/'
+    fi
+    if [[ -s /etc/systemd/system/field-cli.service ]]; then
+        FIELD_CLI_PORT=$(awk -F "=" '/port/ {print $2}' $FIELD_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        FIELD_CLI_IOTA_ADDRESS=$(awk -F "=" '/address/ {print $2}' $FIELD_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        FIELD_DISABLE_IRI=$(awk -F "=" '/disableIRI/ {print $2}' $FIELD_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
+        FIELD_CLI_ALLOW_POW=$(awk -F "=" '/pow/ {print $2}' $FIELD_CLI_CONFIG_FILE_NAME | tr -d ' ' | xargs)
     fi
 }
 
@@ -510,6 +592,9 @@ start_node_daemon() {
     fi
     if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
         sudo systemctl start nelson-gui
+    fi
+    if [[ -s /etc/systemd/system/field-cli.service ]]; then
+        sudo systemctl start field-cli
     fi
 
     if [[ "$IS_TUI_ON" = true ]]; then   
@@ -567,6 +652,9 @@ stop_node_daemon() {
     if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
         sudo systemctl stop nelson-gui
     fi
+    if [[ -s /etc/systemd/system/field-cli.service ]]; then
+        sudo systemctl stop field-cli
+    fi
 
     if [[ "$IS_TUI_ON" = true ]]; then   
         whiptail --title "IOTA-node status" \
@@ -592,12 +680,16 @@ uninstall_node() {
         sudo rm /etc/systemd/system/iota-pm.service
     fi
     if [[ -s /etc/systemd/system/nelson-cli.service ]]; then
-        sudo npm -g uninstall nelson-cli
+        sudo npm -g uninstall nelson.cli
         sudo rm /etc/systemd/system/nelson-cli.service
     fi
     if [[ -s /etc/systemd/system/nelson-gui.service ]]; then
-        sudo npm -g uninstall nelson-gui
+        sudo npm -g uninstall nelson.gui
         sudo rm /etc/systemd/system/nelson-gui.service
+    fi
+    if [[ -s /etc/systemd/system/field-cli.service ]]; then
+        sudo npm -g uninstall field.cli
+        sudo rm /etc/systemd/system/field-cli.service
     fi
 
     sudo rm -rf $HOME/.iota-node/

@@ -8,7 +8,7 @@ set -o nounset
 
 declare -r IOTA_NODE_VERSION="2.1.3"
 declare REQUIRED_MINIMUM_AMOUNT_OF_RAM=4
-declare AMOUNT_OF_RAM=$(($(free -h | awk -F' ' '{print $2}' | head -2 | tail -1 | sed 's/G//' | sed 's/.[0-9]//')+1))
+declare AMOUNT_OF_RAM=$(($(free -h | awk -F' ' '{print $2}' | head -2 | tail -1 | sed 's/G//')+1))
 
 # IRI
 declare IRI_PORT=14265
